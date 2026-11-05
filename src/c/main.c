@@ -9,8 +9,6 @@
 #include "tuner.h"
 #include "ui.h"
 
-// Input below this RMS (about -60 dBFS) is treated as silence.
-#define MIN_RMS 30
 // Start-up sweep, as in Chroma: bars light from the outside in and back out.
 #define ANIM_STEP_MS 120
 #define ANIM_STEPS 12
@@ -125,7 +123,7 @@ static void capture_start(void) {
   if (s_capturing || window_stack_get_top_window() != s_window) {
     return;
   }
-  tuner_init(&s_tuner, MIN_RMS);
+  tuner_init(&s_tuner, s_settings.sensitivity);
   const MicCaptureStartResult result = mic_capture_start(
       (MicCaptureHandlers){
           .data = on_audio,
@@ -157,6 +155,7 @@ static void focus_changed(bool in_focus) {
 // Window
 
 static void settings_closed(void) {
+  tuner_set_sensitivity(&s_tuner, s_settings.sensitivity);
   ui_refresh();
 }
 
@@ -186,7 +185,7 @@ static void window_unload(Window *window) {
 
 static void init(void) {
   settings_load(&s_settings);
-  tuner_init(&s_tuner, MIN_RMS);
+  tuner_init(&s_tuner, s_settings.sensitivity);
   s_window = window_create();
   window_set_background_color(s_window, THEME_BACKGROUND);
   window_set_click_config_provider(s_window, click_config);

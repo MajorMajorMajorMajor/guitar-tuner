@@ -27,7 +27,16 @@ typedef struct {
   int32_t rms;
 } PitchEstimate;
 
+typedef struct {
+  // Audio whose latest 64 ms is quieter than this RMS is treated as silence.
+  int32_t min_rms;
+  // YIN absolute threshold: a lag whose normalised difference is below it
+  // counts as periodic. With additive noise d'(T) ~ 1 / (1 + SNR), so 0.12
+  // needs ~9 dB of in-band SNR and 0.2 ~6 dB.
+  float threshold;
+} PitchConfig;
+
 // Analyse the most recent `count` samples (oldest first), where count is
-// PITCH_COARSE_WINDOW..PITCH_WINDOW. Audio whose latest 64 ms is quieter than
-// min_rms is reported as unpitched without running the detector.
-void pitch_estimate(const int16_t *samples, int count, int32_t min_rms, PitchEstimate *out);
+// PITCH_COARSE_WINDOW..PITCH_WINDOW.
+void pitch_estimate(const int16_t *samples, int count, const PitchConfig *config,
+                    PitchEstimate *out);

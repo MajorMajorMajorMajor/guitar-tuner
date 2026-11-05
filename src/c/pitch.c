@@ -6,11 +6,14 @@
 //    and run YIN (difference function, cumulative-mean normalisation,
 //    absolute threshold) over the whole lag range. This finds the period
 //    cheaply and robustly.
-// 2. Re-evaluate the raw difference function at 16 kHz, over up to 128 ms, on
-//    the few lags around that period and interpolate the minimum. This gives
-//    the sub-sample precision a tuner needs (well under 1 cent).
+// 2. If that period could be a guitar-body thump mixed with the string, check
+//    a bass-attenuated copy for a clean sub-period (see RUMBLE_MAX_K).
+// 3. Re-evaluate the raw difference function at 16 kHz, over up to 128 ms,
+//    walking from that period down to the minimum, and interpolate it. This
+//    gives the sub-sample precision a tuner needs (well under 1 cent).
 //
-// Cost per estimate is roughly 65k integer multiply-accumulates.
+// Cost per estimate is roughly 65k integer multiply-accumulates, plus ~5k
+// when the rumble check runs.
 
 #define DECIMATION 2
 #define RATE8 (PITCH_SAMPLE_RATE / DECIMATION)
@@ -20,11 +23,6 @@
 // Coarse integration window. Must satisfy W8 + TAU8_MAX + 1 <= N8.
 #define W8 (N8 - TAU8_MAX - 1)
 
-// A lag whose normalised difference falls below this is accepted as periodic.
-// With additive noise d'(T) ~ 1 / (1 + SNR), so 0.12 needs roughly 9 dB of
-// in-band SNR; below that the estimate wanders by several cents and it is
-// better to show nothing.
-#define YIN_THRESHOLD 0.12f
 // If the dip at twice the chosen lag is this much deeper, the chosen lag was
 // a strong 2nd harmonic rather than the fundamental (common when the
 // fundamental is weak, e.g. a low string through a small microphone).
@@ -38,10 +36,23 @@
 // Only candidates below ~670 Hz are checked: a weak fundamental is a low-note
 // problem, and dips only a few 8 kHz lags wide are too coarse to compare.
 #define OCTAVE_MIN_TAU 12
-// Refinement searches +/- this many 16 kHz lags around the coarse estimate.
-#define REFINE_SPAN 2
+// Low-frequency rumble check. Plucking hard sets the guitar body ringing at
+// its air resonance (~90-130 Hz) for a fraction of a second. High E plus a
+// 110 Hz thump repeats every 3 E periods, so in one window it is
+// indistinguishable from an A2 note with only every 3rd harmonic, and reads
+// as A2. A real A2 string also has partials at 220, 440, 550 Hz...: so when
+// the bass-attenuated signal (second difference, +12 dB/oct, the thump down
+// ~19 dB relative to the string) is cleanly periodic at 1/k of the chosen
+// period, the long period came from rumble and 1/k is the string.
+// On the test notes, the bass-attenuated signal never reads below 0.47 at a
+// sub-period; on a thump it reads 0.01-0.05.
+#define RUMBLE_MAX_K 5
+#define RUMBLE_THRESHOLD 0.1f
+// Refinement may walk this many 16 kHz lags from the coarse estimate.
+#define REFINE_REACH 8
 
 static int32_t s_dec[N8];
+static int32_t s_tilt[N8];  // second difference of s_dec
 static int64_t s_diff[TAU8_MAX + 2];
 static float s_cmnd[TAU8_MAX + 2];
 
@@ -133,6 +144,60 @@ static float dip_depth(int tau) {
   return v < 0.0f ? 0.0f : v;
 }
 
+// Normalised squared difference of the bass-attenuated signal at `lag`:
+// 0 when periodic, ~1 when uncorrelated.
+static float tilt_nsd(int lag) {
+  int64_t num = 0;
+  int64_t den = 0;
+  const int32_t *a = s_tilt;
+  const int32_t *b = s_tilt + lag;
+  for (int j = 0; j < W8 - 1; j++) {
+    const int32_t d = a[j] - b[j];
+    num += (int64_t)d * d;
+    den += (int64_t)a[j] * a[j] + (int64_t)b[j] * b[j];
+  }
+  return den > 0 ? (float)num / (float)den : 1.0f;
+}
+
+// Minimum of tilt_nsd around `lag` (+/- 1), through a parabola. Sets *at to
+// the best integer lag.
+static float tilt_dip(int lag, int *at) {
+  float v[3];
+  for (int i = 0; i < 3; i++) {
+    v[i] = tilt_nsd(lag - 1 + i);
+  }
+  int best = 1;
+  if (v[0] < v[best]) {
+    best = 0;
+  }
+  if (v[2] < v[best]) {
+    best = 2;
+  }
+  *at = lag - 1 + best;
+  if (best != 1) {
+    return v[best];
+  }
+  const float den = v[0] - 2.0f * v[1] + v[2];
+  const float m = den > 0.0f ? v[1] - (v[0] - v[2]) * (v[0] - v[2]) / (8.0f * den) : v[1];
+  return m < 0.0f ? 0.0f : m;
+}
+
+// diff16 of the second difference of x (bass attenuated, +12 dB/oct), for
+// refining a period found under low-frequency rumble.
+static int64_t diff16_tilt(const int16_t *x, int lag, int width) {
+  int64_t acc = 0;
+  int32_t e0 = (int32_t)x[0] - (int32_t)x[lag];
+  int32_t e1 = (int32_t)x[1] - (int32_t)x[1 + lag];
+  for (int j = 1; j < width - 1; j++) {
+    const int32_t e2 = (int32_t)x[j + 1] - (int32_t)x[j + 1 + lag];
+    const int32_t d = e0 - 2 * e1 + e2;
+    acc += (int64_t)d * d;
+    e0 = e1;
+    e1 = e2;
+  }
+  return acc;
+}
+
 static int64_t diff16(const int16_t *x, int lag, int width) {
   int64_t acc = 0;
   const int16_t *a = x;
@@ -144,7 +209,12 @@ static int64_t diff16(const int16_t *x, int lag, int width) {
   return acc;
 }
 
-void pitch_estimate(const int16_t *samples, int count, int32_t min_rms, PitchEstimate *out) {
+static int64_t refine_diff(const int16_t *x, int lag, int width, bool tilted) {
+  return tilted ? diff16_tilt(x, lag, width) : diff16(x, lag, width);
+}
+
+void pitch_estimate(const int16_t *samples, int count, const PitchConfig *config,
+                    PitchEstimate *out) {
   out->hz = 0.0f;
   out->clarity = 0.0f;
   out->rms = 0;
@@ -165,7 +235,7 @@ void pitch_estimate(const int16_t *samples, int count, int32_t min_rms, PitchEst
     energy += (uint64_t)((int64_t)v * v);
   }
   out->rms = (int32_t)isqrt64(energy / PITCH_COARSE_WINDOW);
-  if (out->rms < min_rms) {
+  if (out->rms < config->min_rms) {
     return;
   }
 
@@ -198,7 +268,7 @@ void pitch_estimate(const int16_t *samples, int count, int32_t min_rms, PitchEst
   // enough.
   int tau = -1;
   for (int t = TAU8_MIN + 1; t < TAU8_MAX; t++) {
-    if (is_local_min(t) && dip_depth(t) < YIN_THRESHOLD) {
+    if (is_local_min(t) && dip_depth(t) < config->threshold) {
       tau = t;
       break;
     }
@@ -220,26 +290,67 @@ void pitch_estimate(const int16_t *samples, int count, int32_t min_rms, PitchEst
     tau = twice;
   }
 
-  const float clarity = 1.0f - dip_depth(tau);
-  const float coarse = (float)tau + parabolic_offset(s_diff[tau - 1], s_diff[tau], s_diff[tau + 1]);
+  float clarity = 1.0f - dip_depth(tau);
+  float coarse = (float)tau + parabolic_offset(s_diff[tau - 1], s_diff[tau], s_diff[tau + 1]);
 
-  // 2. Refine at 16 kHz around the coarse period, over all `count` samples.
-  const int center = (int)(coarse * DECIMATION + 0.5f);
-  const int lo = center - REFINE_SPAN - 1;
-  const int hi = center + REFINE_SPAN + 1;
-  const int width = count - hi - 1;
-  int64_t d16[2 * REFINE_SPAN + 3];
-  for (int lag = lo; lag <= hi; lag++) {
-    d16[lag - lo] = diff16(samples, lag, width);
-  }
-  int best = 1;
-  for (int i = 2; i <= 2 * REFINE_SPAN + 1; i++) {
-    if (d16[i] < d16[best]) {
-      best = i;
+  // Rumble check (see RUMBLE_MAX_K): try the shortest sub-period first.
+  bool rumble = false;
+  if (tau >= 2 * (TAU8_MIN + 2)) {
+    for (int i = 0; i < N8 - 2; i++) {
+      s_tilt[i] = s_dec[i] - 2 * s_dec[i + 1] + s_dec[i + 2];
+    }
+    for (int k = RUMBLE_MAX_K; k >= 2; k--) {
+      const int lag = (int)(coarse / (float)k + 0.5f);
+      if (lag - 1 <= TAU8_MIN) {
+        continue;
+      }
+      int at;
+      const float tilted = tilt_dip(lag, &at);
+      const int full = descend(at);
+      if (tilted < RUMBLE_THRESHOLD) {
+        // The full-band dip may be shifted or missing under the thump.
+        tau = (full >= at - 1 && full <= at + 1) ? full : at;
+        clarity = 1.0f - tilted;
+        rumble = true;
+        // The full-band fit is skewed by the thump; start from the lag.
+        coarse = (float)at;
+        break;
+      }
     }
   }
-  const float period = (float)(lo + best) + cosine_offset(d16[best - 1], d16[best], d16[best + 1],
-                                                          (float)(lo + best));
+
+  // 2. Refine at 16 kHz: walk the raw difference function downhill from the
+  //    coarse period to its minimum, over all `count` samples, and
+  //    interpolate. Under rumble, use the bass-attenuated signal: the
+  //    thump's own difference function slopes across these lags and would
+  //    drag the minimum by tens of cents.
+  const int start = (int)(coarse * DECIMATION + 0.5f);
+  const int width = count - (start + REFINE_REACH + 1) - 1;
+  int lag = start;
+  int64_t d_lo = refine_diff(samples, lag - 1, width, rumble);
+  int64_t d_mid = refine_diff(samples, lag, width, rumble);
+  int64_t d_hi = refine_diff(samples, lag + 1, width, rumble);
+  for (int step = 0; step < REFINE_REACH; step++) {
+    if (d_lo < d_mid && lag - 2 >= 1) {
+      lag--;
+      d_hi = d_mid;
+      d_mid = d_lo;
+      d_lo = refine_diff(samples, lag - 1, width, rumble);
+    } else if (d_hi < d_mid && lag + 1 < start + REFINE_REACH) {
+      lag++;
+      d_lo = d_mid;
+      d_mid = d_hi;
+      d_hi = refine_diff(samples, lag + 1, width, rumble);
+    } else {
+      break;
+    }
+  }
+  if (d_lo < d_mid || d_hi < d_mid) {
+    return;  // no minimum within reach: not a stable period
+  }
+  // The tilted dip is sharper than a sinusoid's, closer to a parabola.
+  const float period = (float)lag + (rumble ? parabolic_offset(d_lo, d_mid, d_hi)
+                                            : cosine_offset(d_lo, d_mid, d_hi, (float)lag));
   if (period <= 0.0f) {
     return;
   }

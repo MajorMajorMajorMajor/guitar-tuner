@@ -9,7 +9,6 @@
 // Readings below CLARITY_FULL move the display proportionally less, down to
 // CLARITY_MIN_WEIGHT at the detector's threshold: as a note decays into the
 // noise its estimates wander, and the needle should settle, not follow them.
-#define CLARITY_LOW 0.88f
 #define CLARITY_FULL 0.96f
 #define CLARITY_MIN_WEIGHT 0.08f
 // A median that moves further than this (in semitones) is a new note: jump
@@ -24,11 +23,26 @@
 // settles on the note within ~0.2 s rather than easing in from the attack.
 #define SETTLE_ESTIMATES 4
 #define SETTLE_SMOOTHING 0.6f
-// Showing a new note (or jumping away from the current one) takes a clean
-// estimate. Marginal ones, typical of a note decaying into noise, can only
-// nudge the current note; otherwise one stray sub-harmonic would show up as a
-// wrong note.
-#define CLARITY_JUMP 0.92f
+// Showing a new note (or jumping away from the current one) takes one clean
+// estimate, or two agreeing ones (within CONFIRM_SEMITONES) of at least the
+// sensitivity's confirm_clarity. Anything less, typical of a note decaying
+// into noise, can only nudge the current note; otherwise one stray
+// sub-harmonic would show up as a wrong note.
+#define CLARITY_SURE 0.92f
+#define CONFIRM_SEMITONES 0.3f
+
+// Per sensitivity: level gate, detector threshold, confirm clarity. Low is
+// the original tuning (needs ~11 dB SNR to start a note); Normal starts one
+// ~2 dB and High ~4 dB lower, and both keep a decaying note longer.
+static const struct {
+  int32_t min_rms;
+  float threshold;
+  float confirm_clarity;
+} k_sensitivity[] = {
+    [TUNER_SENSITIVITY_LOW] = {30, 0.12f, CLARITY_SURE},
+    [TUNER_SENSITIVITY_NORMAL] = {12, 0.15f, 0.88f},
+    [TUNER_SENSITIVITY_HIGH] = {5, 0.20f, 0.84f},
+};
 
 // Pre-filter, in Q6 fixed point:
 // - one-pole DC/rumble blocker, y = x - x1 + R y1, R = 0.985 (~38 Hz)
@@ -50,10 +64,19 @@ static int16_t prefilter(Tuner *t, int16_t sample) {
   return (int16_t)(out > 32767 ? 32767 : out < -32768 ? -32768 : out);
 }
 
-void tuner_init(Tuner *tuner, int32_t min_rms) {
+void tuner_set_sensitivity(Tuner *tuner, TunerSensitivity sensitivity) {
+  if ((unsigned)sensitivity > TUNER_SENSITIVITY_HIGH) {
+    sensitivity = TUNER_SENSITIVITY_NORMAL;
+  }
+  tuner->pitch.min_rms = k_sensitivity[sensitivity].min_rms;
+  tuner->pitch.threshold = k_sensitivity[sensitivity].threshold;
+  tuner->confirm_clarity = k_sensitivity[sensitivity].confirm_clarity;
+}
+
+void tuner_init(Tuner *tuner, TunerSensitivity sensitivity) {
   memset(tuner, 0, sizeof(*tuner));
-  tuner->min_rms = min_rms;
   tuner->span = PITCH_COARSE_WINDOW;
+  tuner_set_sensitivity(tuner, sensitivity);
 }
 
 static float median3(const float *v, int n) {
@@ -117,10 +140,19 @@ static void update(Tuner *tuner, PitchEstimate *est, void (*recent)(Tuner *, Pit
   const float median = median3(history, len);
 
   const bool jump = !r->active || absf(median - tuner->smooth) > JUMP_SEMITONES;
-  if (jump && est->clarity < CLARITY_JUMP) {
-    miss(tuner);  // too marginal to change the note: drop it
-    return;
+  if (jump && est->clarity < CLARITY_SURE) {
+    const float raw = history[len - 1];
+    const bool confirmed = tuner->has_pending && absf(raw - tuner->pending) < CONFIRM_SEMITONES;
+    if (est->clarity < tuner->confirm_clarity || !confirmed) {
+      // Too marginal to change the note on its own: drop it, but remember
+      // it in case the next estimate agrees.
+      tuner->pending = raw;
+      tuner->has_pending = est->clarity >= tuner->confirm_clarity;
+      miss(tuner);
+      return;
+    }
   }
+  tuner->has_pending = false;
   if (jump && tuner->span > PITCH_COARSE_WINDOW) {
     // A new note: measure it only over audio that follows the change.
     tuner->span = PITCH_COARSE_WINDOW;
@@ -138,7 +170,8 @@ static void update(Tuner *tuner, PitchEstimate *est, void (*recent)(Tuner *, Pit
     tuner->smooth = history[len - 1];
     tuner->settle = SETTLE_ESTIMATES;
   } else {
-    float weight = (est->clarity - CLARITY_LOW) / (CLARITY_FULL - CLARITY_LOW);
+    const float clarity_low = 1.0f - tuner->pitch.threshold;
+    float weight = (est->clarity - clarity_low) / (CLARITY_FULL - clarity_low);
     weight = weight > 1.0f ? 1.0f : weight < CLARITY_MIN_WEIGHT ? CLARITY_MIN_WEIGHT : weight;
     const float alpha = tuner->settle > 0 ? SETTLE_SMOOTHING : SMOOTHING;
     if (tuner->settle > 0) {
@@ -171,12 +204,12 @@ static void update(Tuner *tuner, PitchEstimate *est, void (*recent)(Tuner *, Pit
 
 static void measure(Tuner *tuner, PitchEstimate *est) {
   const int count = tuner->span < tuner->fill ? tuner->span : tuner->fill;
-  pitch_estimate(tuner->window + tuner->fill - count, count, tuner->min_rms, est);
+  pitch_estimate(tuner->window + tuner->fill - count, count, &tuner->pitch, est);
 }
 
 static void measure_recent(Tuner *tuner, PitchEstimate *est) {
   pitch_estimate(tuner->window + tuner->fill - PITCH_COARSE_WINDOW, PITCH_COARSE_WINDOW,
-                 tuner->min_rms, est);
+                 &tuner->pitch, est);
 }
 
 bool tuner_feed(Tuner *tuner, const int16_t *samples, size_t count) {
