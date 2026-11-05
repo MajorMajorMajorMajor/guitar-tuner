@@ -12,7 +12,10 @@
 
 #define RATE PITCH_SAMPLE_RATE
 #define FRAME 320  // samples per Pebble mic callback
-#define MIN_RMS 30
+
+// Sensitivity used by every tuner the tests create.
+static TunerSensitivity s_sensitivity = TUNER_SENSITIVITY_NORMAL;
+static const char *const k_sensitivity_names[] = {"low", "normal", "high"};
 
 static int s_failures = 0;
 static int s_checks = 0;
@@ -135,7 +138,7 @@ typedef struct {
 // between t0 and t1 seconds against the expected frequency.
 static Stats run(const int16_t *pcm, int n, double expect_hz, double t0, double t1) {
   static Tuner tuner;
-  tuner_init(&tuner, MIN_RMS);
+  tuner_init(&tuner, s_sensitivity);
   Stats st = {0};
   const double expect_midi = 69.0 + 12.0 * log2(expect_hz / 440.0);
   const int expect_note = (int)lround(expect_midi);
@@ -308,8 +311,16 @@ static Stats stress_case(Stress kind, double hz, uint32_t seed) {
 }
 
 // Worst detection rate, total wrong notes, worst max error and mean error.
+// Limits are for the low sensitivity; the more sensitive levels keep showing
+// a note further into its noisy tail, where readings wander more, so their
+// error limits get some slack. Wrong notes are never allowed.
 static void stress(Stress kind, int strings, double min_detect, double max_err, double max_mean,
                    double b1_max_err) {
+  static const double k_err_slack[] = {1.0, 1.25, 1.6};
+  static const double k_mean_slack[] = {0.0, 0.25, 0.5};
+  max_err *= k_err_slack[s_sensitivity];
+  b1_max_err *= k_err_slack[s_sensitivity];
+  max_mean += k_mean_slack[s_sensitivity];
   for (int s = 0; s < strings; s++) {
     double detect = 1.0, worst = 0.0, worst_mean = 0.0;
     int wrong = 0, octave = 0;
@@ -350,6 +361,85 @@ static void test_stress(void) {
   stress(STRESS_NOISY, 8, 0.55, 5.0, 1.5, 9.0);
 }
 
+// A hard pluck sets an acoustic guitar's body ringing at its air resonance
+// (~90-130 Hz) for a fraction of a second. High E plus a 110 Hz thump
+// repeats every 3 E periods and used to read as A2; G and B strings had
+// the same problem an octave down.
+static void add_thump(double *x, int n, double hz, double amp, double decay_s) {
+  const double phase = rand_uniform() * 2.0 * M_PI;
+  for (int i = 0; i < n; i++) {
+    const double t = (double)i / RATE;
+    x[i] += amp * exp(-t / decay_s) * sin(phase + 2.0 * M_PI * hz * t);
+  }
+}
+
+static void test_body_thump(void) {
+  printf("plucks with a body resonance thump at the attack\n");
+  static const double k_thump_hz[] = {95, 105, 110, 115, 125};
+  static const double k_thump_level[] = {0.5, 1.0};  // of the string's peak
+  static const double k_thump_decay[] = {0.05, 0.15};
+  const int n = SECONDS(1.0);
+  for (int s = 3; s < 8; s++) {  // A2 .. E4
+    const double hz = k_strings[s].hz;
+    int readings = 0, wrong = 0;
+    double worst = 0.0;
+    for (int f = 0; f < 5; f++) {
+      for (int l = 0; l < 2; l++) {
+        for (int d = 0; d < 2; d++) {
+          s_rng = 0x51u + (uint32_t)(s * 1000 + f * 100 + l * 10 + d);
+          gen_pluck(s_buf, n, hz, 12000, 1.0e-5);
+          add_thump(s_buf, n, k_thump_hz[f], 12000 * k_thump_level[l], k_thump_decay[d]);
+          add_noise(s_buf, n, 30);
+          to_pcm(s_buf, s_pcm, n);
+          const Stats st = run(s_pcm, n, hz, 0.0, 1.0);
+          readings += st.detected;
+          wrong += st.wrong_note;
+          worst = fmax(worst, st.max_err);
+        }
+      }
+    }
+    printf("  %-15s wrong %d of %d readings  max err %.2f ct\n", k_strings[s].name, wrong,
+           readings, worst);
+    CHECK(wrong <= readings / 50, "%s thump: %d/%d wrong", k_strings[s].name, wrong, readings);
+    if (s == 7) {
+      CHECK(wrong == 0, "E4 thump: %d wrong", wrong);
+    }
+  }
+}
+
+// Softer and softer plucks over a fixed microphone noise floor: how long the
+// note stays on screen at each sensitivity, and that it is never wrong.
+static void test_soft_plucks(void) {
+  printf("soft plucks over a noise floor (seconds shown of 2.0, per sensitivity)\n");
+  static const double k_peaks[] = {4000, 1500, 600, 250};
+  const int n = SECONDS(2.0);
+  double shown[3][4] = {{0}};
+  for (int level = 0; level < 3; level++) {
+    s_sensitivity = (TunerSensitivity)level;
+    for (int p = 0; p < 4; p++) {
+      for (int str = 2; str < 8; str++) {  // E2 .. E4
+        for (int k = 0; k < 2; k++) {
+          s_rng = k_seeds[k] + (uint32_t)(p * 31 + str);
+          gen_pluck(s_buf, n, k_strings[str].hz, k_peaks[p], 1.0e-5);
+          add_noise(s_buf, n, 25);
+          to_pcm(s_buf, s_pcm, n);
+          const Stats st = run(s_pcm, n, k_strings[str].hz, 0.0, 2.0);
+          shown[level][p] += st.detected * (TUNER_HOP / (double)RATE) / 12.0;
+          CHECK(st.wrong_note == 0, "soft %s peak %.0f %s: %d wrong", k_sensitivity_names[level],
+                k_peaks[p], k_strings[str].name, st.wrong_note);
+        }
+      }
+    }
+  }
+  for (int p = 0; p < 4; p++) {
+    printf("  peak %5.0f (%+3.0f dB):  low %.2f s  normal %.2f s  high %.2f s\n", k_peaks[p],
+           20 * log10(k_peaks[p] / 4000), shown[0][p], shown[1][p], shown[2][p]);
+    CHECK(shown[1][p] >= shown[0][p] && shown[2][p] >= shown[1][p],
+          "sensitivity should not reduce detection at peak %.0f", k_peaks[p]);
+  }
+  s_sensitivity = TUNER_SENSITIVITY_NORMAL;
+}
+
 static void test_unpitched(void) {
   printf("silence and white noise\n");
   const int n = SECONDS(2.0);
@@ -375,7 +465,7 @@ static void test_cents(void) {
     gen_pluck(s_buf, n, hz, 10000, 0.0);
     to_pcm(s_buf, s_pcm, n);
     static Tuner tuner;
-    tuner_init(&tuner, MIN_RMS);
+    tuner_init(&tuner, s_sensitivity);
     for (int pos = 0; pos + FRAME <= SECONDS(0.6); pos += FRAME) {
       tuner_feed(&tuner, s_pcm + pos, FRAME);
     }
@@ -396,7 +486,7 @@ static void test_note_change_and_hold(void) {
   to_pcm(s_buf, s_pcm, 3 * half);
 
   static Tuner tuner;
-  tuner_init(&tuner, MIN_RMS);
+  tuner_init(&tuner, s_sensitivity);
   int midi_at_1_2 = -1, midi_at_2_5 = -1;
   bool active_at_2_5 = false, active_end = true;
   for (int pos = 0; pos + FRAME <= 3 * half; pos += FRAME) {
@@ -420,8 +510,16 @@ int main(void) {
   test_notes();
   test_sines();
   test_plucks();
-  test_stress();
-  test_unpitched();
+  for (int level = 0; level < 3; level++) {
+    s_sensitivity = (TunerSensitivity)level;
+    printf("\n== sensitivity: %s ==\n", k_sensitivity_names[level]);
+    test_stress();
+    test_body_thump();
+    test_unpitched();
+  }
+  s_sensitivity = TUNER_SENSITIVITY_NORMAL;
+  printf("\n");
+  test_soft_plucks();
   test_cents();
   test_note_change_and_hold();
   printf("\n%d/%d checks passed\n", s_checks - s_failures, s_checks);

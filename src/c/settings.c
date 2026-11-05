@@ -7,6 +7,7 @@ enum {
   KEY_NOTATION = 2,
   KEY_ACCIDENTAL = 3,
   KEY_PRECISION = 4,
+  KEY_SENSITIVITY = 5,
 };
 
 enum {
@@ -14,6 +15,7 @@ enum {
   ROW_NOTATION,
   ROW_ACCIDENTAL,
   ROW_PRECISION,
+  ROW_SENSITIVITY,
   ROW_COUNT,
 };
 
@@ -32,6 +34,9 @@ void settings_load(Settings *settings) {
   settings->notation = (Notation)read_int(KEY_NOTATION, NOTATION_LETTER, 0, 1);
   settings->accidental = (AccidentalStyle)read_int(KEY_ACCIDENTAL, ACCIDENTAL_STYLE_SHARP, 0, 1);
   settings->precision = read_int(KEY_PRECISION, 2, 0, MAX_PRECISION);
+  settings->sensitivity = (TunerSensitivity)read_int(KEY_SENSITIVITY, TUNER_SENSITIVITY_NORMAL,
+                                                     TUNER_SENSITIVITY_LOW,
+                                                     TUNER_SENSITIVITY_HIGH);
 }
 
 static void save(const Settings *settings) {
@@ -39,6 +44,7 @@ static void save(const Settings *settings) {
   persist_write_int(KEY_NOTATION, settings->notation);
   persist_write_int(KEY_ACCIDENTAL, settings->accidental);
   persist_write_int(KEY_PRECISION, settings->precision);
+  persist_write_int(KEY_SENSITIVITY, settings->sensitivity);
 }
 
 // ---------------------------------------------------------------------------
@@ -76,6 +82,12 @@ static void draw_row(GContext *ctx, const Layer *cell, MenuIndex *index, void *d
       title = "Precision";
       value = s_precision_text;
       break;
+    case ROW_SENSITIVITY:
+      title = "Sensitivity";
+      value = s_settings->sensitivity == TUNER_SENSITIVITY_LOW    ? "Low: noisy rooms"
+              : s_settings->sensitivity == TUNER_SENSITIVITY_HIGH ? "High: soft playing"
+                                                                   : "Normal";
+      break;
   }
   menu_cell_basic_draw(ctx, cell, title, value, NULL);
 }
@@ -100,6 +112,10 @@ static void select_click(MenuLayer *menu, MenuIndex *index, void *ctx) {
       break;
     case ROW_PRECISION:
       s_settings->precision = (s_settings->precision + 1) % (MAX_PRECISION + 1);
+      break;
+    case ROW_SENSITIVITY:
+      s_settings->sensitivity = (TunerSensitivity)((s_settings->sensitivity + 1) %
+                                                   (TUNER_SENSITIVITY_HIGH + 1));
       break;
   }
   save(s_settings);

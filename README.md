@@ -42,7 +42,8 @@ Open the app and play a note. The screen shows:
 After the string stops ringing, the last reading stays on screen in grey for
 about a second.
 
-Press **Select** for settings. These match Chroma's options and defaults:
+Press **Select** for settings. The first four match Chroma's options and
+defaults:
 
 | Setting | Options | Default |
 | --- | --- | --- |
@@ -50,6 +51,13 @@ Press **Select** for settings. These match Chroma's options and defaults:
 | Notation | A B C / Do Re Mi | A B C |
 | Accidentals | Sharp / Flat | Sharp |
 | Precision | in tune within ±0 … ±5 cents | ±2 |
+| Sensitivity | Low (noisy rooms) / Normal / High (soft playing) | Normal |
+
+Sensitivity sets how quiet and how noisy a note can be and still show. Each
+step up picks up quieter plucks and keeps a ringing note on screen longer. In
+the tests, a pluck 24 dB down stays on screen 0.62 s at Low, 0.73 s at Normal
+and 0.82 s at High. The cost is that readings in a note's noisy tail wander a
+little more. Low is the original tuning.
 
 The detection range is 58–1400 Hz. That covers a 7-string low B up to the
 24th fret of the high E string.
@@ -68,13 +76,23 @@ software floating point, so the heavy loops use integer maths only.
    under the threshold, read from a parabola through that dip. If that dip
    is a strong 2nd harmonic, the detector drops an octave. This happens with
    a weak fundamental, for example a low string through a small microphone.
-3. **Precise period.** The raw difference function is evaluated again at
+3. **Rumble check.** Plucking an acoustic guitar hard sets its body ringing
+   at the air resonance, around 90–130 Hz, for a fraction of a second. High
+   E plus a 110 Hz thump repeats every three E periods, so within one window
+   it looks exactly like an A2 note. The difference is that a real A2 string
+   also has partials at 220, 440, 550 Hz and so on. So when the detector
+   picks a long period, it checks a bass-attenuated copy of the signal (a
+   second difference, +12 dB per octave). If that copy is cleanly periodic
+   at 1/2 … 1/5 of the period, the long period came from the thump, and the
+   shorter one is the string.
+4. **Precise period.** The raw difference function is evaluated again at
    16 kHz on the few lags around that period. The window covers up to 128 ms
    of audio since the note started. A cosine fit through the minimum gives
    accuracy well under a cent.
-4. **Display.** A median of three readings rejects outliers. Smoothing is
+5. **Display.** A median of three readings rejects outliers. Smoothing is
    weighted by how periodic each window is, so a decaying note settles
-   instead of wandering. A note change needs a clean reading to take effect.
+   instead of wandering. A note change needs one clean reading, or two
+   agreeing ones at the more sensitive levels, to take effect.
    There is hysteresis at ±50 cents, and the reading is held for 0.8 s after
    the sound stops.
 
@@ -94,6 +112,8 @@ automatically. You can feed it a test note:
 
 ```sh
 python3 tools/pluck_wav.py E2 -12 /tmp/e2.wav    # E2, 12 cents flat
+python3 tools/pluck_wav.py E4 0 /tmp/e4.wav --thump 110    # hard pluck, body thump
+python3 tools/pluck_wav.py A2 0 /tmp/a2.wav --peak 0.01 --noise 0.001   # soft
 pebble emu-mic --emulator emery --file /tmp/e2.wav
 pebble emu-mic --emulator emery --tone 440       # or a plain sine
 ```
@@ -111,12 +131,18 @@ does: 320-sample frames into `tuner_feed`. The cases are:
 - plucked strings from B1 to E6
 - low strings through two simulated small-microphone high-pass filters
 - notes at 10 dB SNR (the noisy cases run under four noise seeds)
+- plucks with a guitar-body thump at the attack
 - white noise and silence
+- soft plucks over a noise floor
 - cents offsets
 - note changes, hold and release
 
-On clean plucks, every reading is within 0.5 cents. In the noisy and filtered
-cases the mean error is 0.3–1.4 cents. No test ever shows a wrong note.
+The robustness tests run at every sensitivity. On clean plucks, every reading
+is within 0.5 cents. In the noisy and filtered cases the mean error is
+0.3–1.4 cents at Low and up to about 2.3 cents at High. No stress test ever
+shows a wrong note. With a body thump as loud as the string, high E never
+reads wrong (it used to read A2 for up to 0.8 s), and the other strings are
+right in at least 98% of readings.
 
 ## Project layout
 

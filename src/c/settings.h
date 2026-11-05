@@ -1,16 +1,18 @@
 #pragma once
 // User options, stored on the watch, and the settings menu that edits them.
-// Same options and defaults as Chroma.
+// Chroma's options and defaults, plus microphone sensitivity.
 
 #include <pebble.h>
 
 #include "notes.h"
+#include "tuner.h"
 
 typedef struct {
   bool advanced;              // octave, frequencies and cents
   Notation notation;          // A B C or Do Re Mi
   AccidentalStyle accidental; // sharps or flats
   int precision;              // in-tune window, +/- 0..5 cents
+  TunerSensitivity sensitivity;
 } Settings;
 
 void settings_load(Settings *settings);

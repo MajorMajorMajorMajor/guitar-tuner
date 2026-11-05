@@ -25,6 +25,15 @@ typedef struct {
   int32_t rms;    // input level of the latest window
 } TunerReading;
 
+// How quiet and how noisy a note may be and still be shown. More sensitive
+// settings pick up softer plucks and keep a decaying note longer, but in a
+// noisy room they are likelier to react to background sound.
+typedef enum {
+  TUNER_SENSITIVITY_LOW = 0,
+  TUNER_SENSITIVITY_NORMAL,
+  TUNER_SENSITIVITY_HIGH,
+} TunerSensitivity;
+
 typedef struct {
   // Pre-filter state (fixed point, see tuner.c).
   int32_t hp_x1, hp_y1, lp1, lp2;
@@ -38,10 +47,15 @@ typedef struct {
   int span;       // samples to measure over: grows from the onset of a note
   int settle;     // estimates left in the fast-settling phase of a new note
   int misses;
-  int32_t min_rms;
+  // A marginal estimate of a new note, waiting for a second one to agree.
+  float pending;
+  bool has_pending;
+  PitchConfig pitch;
+  float confirm_clarity;  // least clarity that can start a note with confirmation
   TunerReading reading;
 } Tuner;
 
-void tuner_init(Tuner *tuner, int32_t min_rms);
+void tuner_init(Tuner *tuner, TunerSensitivity sensitivity);
+void tuner_set_sensitivity(Tuner *tuner, TunerSensitivity sensitivity);
 // Feed microphone samples. Returns true when tuner->reading was updated.
 bool tuner_feed(Tuner *tuner, const int16_t *samples, size_t count);
