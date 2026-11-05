@@ -1,4 +1,4 @@
-# guitar-tuner
+# Guitar Tuner
 
 A chromatic tuner for Pebble watches, modelled on
 [Chroma](https://github.com/adrielcafe/chroma). The watch listens through its
@@ -26,7 +26,7 @@ The app declares `WatchMicrophone` in `package.json`. To grant it, open the
 app's page in the Pebble phone app, with its experimental permission system
 turned on, and allow Microphone. The grant is synced to the watch and stays
 there, so the tuner works without the phone after that. Until the grant
-arrives, the watch shows "Allow the microphone for Tuner in the Pebble app."
+arrives, the watch shows "Allow the microphone for Guitar Tuner in the Pebble app."
 
 ## Using it
 
@@ -155,13 +155,24 @@ src/c/pitch.c       YIN pitch detector                            (portable)
 src/c/notes.c       note names, cents, log2                       (portable)
 resources/glyphs/   pre-rendered note names (tools/render_glyphs.py)
 test/               host tests
-tools/              glyph renderer, test WAV generator
+tools/              glyph renderer, test WAV generator, store images
+store/              appstore listing
 ```
 
 Pebble font glyphs are 1-bit and capped at 4096 pixels, which is too small
 for a Chroma-sized letter. Instead, the big note names and ♯/♭ are
 pre-rendered as anti-aliased images by `tools/render_glyphs.py`. After
 changing their sizes, rerun the script and update `NOTE_CAP` in `src/c/ui.c`.
+
+## Appstore
+
+Listing text, screenshots, icons, banners and the publish command are in
+[`store/`](store/README.md).
+
+## Licence
+
+MIT: see [`LICENSE`](LICENSE). The bundled fonts are under the SIL Open Font
+License.
 
 ## Credits
 
