@@ -1,0 +1,180 @@
+{
+  "name": "guitar-tuner",
+  "author": "MajorMajorMajorMajor",
+  "version": "1.0.0",
+  "keywords": [
+    "pebble-app",
+    "tuner",
+    "guitar",
+    "music"
+  ],
+  "private": true,
+  "dependencies": {},
+  "pebble": {
+    "displayName": "Tuner",
+    "uuid": "9db0336f-78fa-47cc-8222-b80968192786",
+    "sdkVersion": "3",
+    "enableMultiJS": false,
+    "targetPlatforms": [
+      "emery",
+      "gabbro"
+    ],
+    "watchapp": {
+      "watchface": false
+    },
+    "usesPermissions": [
+      "WatchMicrophone"
+    ],
+    "messageKeys": [],
+    "resources": {
+      "media": [
+        {
+          "type": "bitmap",
+          "name": "IMAGE_MENU_ICON",
+          "file": "menu_icon.png",
+          "menuIcon": true
+        },
+        {
+          "type": "bitmap",
+          "name": "NOTE_C",
+          "file": "glyphs/note_c.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "NOTE_D",
+          "file": "glyphs/note_d.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "NOTE_E",
+          "file": "glyphs/note_e.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "NOTE_F",
+          "file": "glyphs/note_f.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "NOTE_G",
+          "file": "glyphs/note_g.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "NOTE_A",
+          "file": "glyphs/note_a.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "NOTE_B",
+          "file": "glyphs/note_b.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "NOTE_DO",
+          "file": "glyphs/note_do.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "NOTE_RE",
+          "file": "glyphs/note_re.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "NOTE_MI",
+          "file": "glyphs/note_mi.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "NOTE_FA",
+          "file": "glyphs/note_fa.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "NOTE_SOL",
+          "file": "glyphs/note_sol.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "NOTE_LA",
+          "file": "glyphs/note_la.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "NOTE_SI",
+          "file": "glyphs/note_si.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "ACCIDENTAL_SHARP",
+          "file": "glyphs/acc_sharp.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "ACCIDENTAL_FLAT",
+          "file": "glyphs/acc_flat.png"
+        },
+        {
+          "type": "font",
+          "name": "FONT_SMALL",
+          "file": "fonts/NotoSans-Regular.ttf",
+          "characterRegex": "[0-9. Hzct]",
+          "pixelHeight": 19,
+          "targetPlatforms": [
+            "emery"
+          ]
+        },
+        {
+          "type": "font",
+          "name": "FONT_SMALL",
+          "file": "fonts/NotoSans-Regular.ttf",
+          "characterRegex": "[0-9. Hzct]",
+          "pixelHeight": 20,
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "font",
+          "name": "FONT_CENTS",
+          "file": "fonts/NotoSans-Regular.ttf",
+          "characterRegex": "[0-9+\\-]",
+          "pixelHeight": 32,
+          "targetPlatforms": [
+            "emery"
+          ]
+        },
+        {
+          "type": "font",
+          "name": "FONT_CENTS",
+          "file": "fonts/NotoSans-Regular.ttf",
+          "characterRegex": "[0-9+\\-]",
+          "pixelHeight": 34,
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "font",
+          "name": "FONT_OCTAVE",
+          "file": "fonts/NotoSans-Bold.ttf",
+          "characterRegex": "[0-9\\-]",
+          "pixelHeight": 28,
+          "targetPlatforms": [
+            "emery"
+          ]
+        },
+        {
+          "type": "font",
+          "name": "FONT_OCTAVE",
+          "file": "fonts/NotoSans-Bold.ttf",
+          "characterRegex": "[0-9\\-]",
+          "pixelHeight": 30,
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        }
+      ]
+    }
+  }
+}
