@@ -99,7 +99,7 @@ static void on_stopped(MicCaptureStopReason reason, void *context) {
   // Losing focus (a notification) or dictation: capture restarts when the
   // app is back in the foreground.
   if (reason == MicCaptureStopReasonPermissionRevoked) {
-    s_message = "Microphone access was turned off for Tuner.";
+    s_message = "Microphone access was turned off for Guitar Tuner.";
   }
   show();
 }
@@ -107,7 +107,7 @@ static void on_stopped(MicCaptureStopReason reason, void *context) {
 static const char *start_error(MicCaptureStartResult result) {
   switch (result) {
     case MicCaptureStartErrPermissionDenied:
-      return "Allow the microphone for Tuner in the Pebble app.";
+      return "Allow the microphone for Guitar Tuner in the Pebble app.";
     case MicCaptureStartErrUnavailable:
       return "This watch can't listen locally. Update its firmware.";
     case MicCaptureStartErrBusy:

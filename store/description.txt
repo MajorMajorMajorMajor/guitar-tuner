@@ -1,0 +1,25 @@
+Guitar Tuner is a chromatic tuner for Pebble Time 2 and Pebble Round 2. Pluck a string and the watch shows the nearest note, how far off you are, and a row of bars that turns green when you're in tune.
+
+It listens through the watch's own microphone and does everything on the watch. Your phone isn't needed while you tune, and no audio is recorded or sent anywhere.
+
+What it shows
+- The nearest note, with its sharp or flat and its octave
+- 11 bars: left of centre is flat, right is sharp. Green is in tune, yellow is close, red is far off.
+- How many cents off you are, the note's exact frequency and the frequency it hears
+
+Settings (press Select)
+- Advanced mode: octave, frequencies and cents, or just the note and bars
+- Notation: A B C or Do Re Mi
+- Accidentals: sharps or flats
+- Precision: how close counts as in tune, from ±0 to ±5 cents
+- Sensitivity: Low for noisy rooms, Normal, or High for soft playing
+
+It covers 58–1400 Hz, from a 7-string's low B to the 24th fret of the high E, so other instruments in that range work too.
+
+Microphone permission: open Guitar Tuner's page in the Pebble app on your phone and allow the microphone. The phone app's experimental permission system needs to be turned on for this. Until the permission arrives, the watch reminds you.
+
+Tips: pluck one string at a time and let it ring. If soft notes don't register, set Sensitivity to High.
+
+Needs up-to-date watch firmware with local microphone support.
+
+Inspired by the Chroma tuner for Android. Open source under the MIT licence.

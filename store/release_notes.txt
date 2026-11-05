@@ -1,0 +1,1 @@
+First release: chromatic tuner with note, cents and colour bars; A B C or Do Re Mi, sharps or flats, precision and microphone sensitivity settings.

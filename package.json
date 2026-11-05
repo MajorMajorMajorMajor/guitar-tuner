@@ -2,6 +2,7 @@
   "name": "guitar-tuner",
   "author": "MajorMajorMajorMajor",
   "version": "1.0.0",
+  "license": "MIT",
   "keywords": [
     "pebble-app",
     "tuner",
@@ -11,7 +12,7 @@
   "private": true,
   "dependencies": {},
   "pebble": {
-    "displayName": "Tuner",
+    "displayName": "Guitar Tuner",
     "uuid": "9db0336f-78fa-47cc-8222-b80968192786",
     "sdkVersion": "3",
     "enableMultiJS": false,
