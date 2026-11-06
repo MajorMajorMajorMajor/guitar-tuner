@@ -87,7 +87,9 @@ def render_accidental(symbol, height):
 
 
 def menu_icon():
-    """25x25 icon: a little deviation meter with the centre bar lit."""
+    """25x25 icon: a little deviation meter with the centre bar lit. Black,
+    like the system's own icons: the launcher draws it as-is on both its
+    white rows and its coloured highlight, so white would vanish."""
     s = 8
     img = Image.new("L", (25 * s, 25 * s), 0)
     d = ImageDraw.Draw(img)
@@ -100,7 +102,7 @@ def menu_icon():
         )
     mask = img.resize((25, 25), Image.LANCZOS)
     alpha = mask.point(lambda v: min(3, (v + 42) // 85) * 85)
-    out = Image.new("RGBA", (25, 25), (255, 255, 255, 0))
+    out = Image.new("RGBA", (25, 25), (0, 0, 0, 0))
     out.putalpha(alpha)
     return out
 
