@@ -53,9 +53,22 @@ its direct link.
 
 ## Later releases
 
-Bump `version` in `package.json`, then:
+Bump `version` in `package.json`. If the screens haven't changed, publish
+without touching the screenshots:
 
 ```sh
-pebble publish --release-notes "What changed" \
+pebble build
+pebble publish --non-interactive --pbw build/guitar-tuner.pbw \
+  --release-notes "What changed"
+```
+
+If they have changed, retake them (see `tools/store_assets.py`) and upload
+them with the release:
+
+```sh
+pebble publish --non-interactive --release-notes "What changed" \
   --screenshots store/screenshots/emery_* store/screenshots/gabbro_*
 ```
+
+Without `--non-interactive`, `pebble publish` ignores `--screenshots` and
+asks instead. Answer 3 to keep the current screenshots, or 2 to pick files.
